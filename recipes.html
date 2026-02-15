@@ -178,6 +178,39 @@
             padding: 0.2rem 0.5rem;
             border-radius: 4px;
         }
+        .recipe-card .card-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #e8e0d5;
+        }
+        .recipe-card .card-actions .btn-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid #ddd5c8;
+            background: #fff;
+            color: #5c4a32;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, border-color 0.2s;
+            flex-shrink: 0;
+        }
+        .recipe-card .card-actions .btn-icon:hover {
+            background: #e8e0d5;
+            border-color: #c9bfb0;
+        }
+        .recipe-card .card-actions .btn-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+        .recipe-card .card-actions a.btn-icon {
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
@@ -233,6 +266,19 @@
                     '</div>';
             }
 
+            var slug = (r.slug || '').trim();
+            var recipeUrl = slug ? 'https://кухня.рф/recipes/' + encodeURIComponent(slug) : '#';
+            var plusSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+            var externalSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+            var listSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
+
+            var actionsHtml =
+                '<div class="card-actions">' +
+                '<button type="button" class="btn-icon" title="Добавить в корзину" aria-label="Добавить в корзину">' + plusSvg + '</button>' +
+                '<a href="' + escapeHtml(recipeUrl) + '" class="btn-icon" target="_blank" rel="noopener noreferrer" title="Открыть рецепт">' + externalSvg + '</a>' +
+                '<button type="button" class="btn-icon" title="Ингредиенты" aria-label="Ингредиенты">' + listSvg + '</button>' +
+                '</div>';
+
             card.innerHTML =
                 (imgEl ? '<div class="img-wrap">' + imgEl + '</div>' : '') +
                 '<div class="body">' +
@@ -240,6 +286,7 @@
                 (meta ? '<div class="meta">' + escapeHtml(meta) + '</div>' : '') +
                 (r.description ? '<p class="description">' + escapeHtml(r.description) + '</p>' : '') +
                 tagsHtml +
+                actionsHtml +
                 '</div>';
 
             return card;
