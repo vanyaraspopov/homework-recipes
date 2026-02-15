@@ -1,13 +1,11 @@
-"""
-Parse api.кухня.рф.recipe.search.json and export name, slug, make_time to CSV.
-"""
 import json
 import csv
 from pathlib import Path
 
 INPUT_JSON = Path(__file__).parent / "api.кухня.рф.recipe.search.json"
 OUTPUT_CSV = Path(__file__).parent / "recipes.csv"
-FIELDS = ["name", "slug", "make_time"]
+RECIPE_URL_PREFIX = "https://xn--j1agri5c.xn--p1ai/recipes/"
+FIELDS = ["name", "slug", "make_time", "link"]
 
 
 def main():
@@ -23,10 +21,12 @@ def main():
         writer = csv.DictWriter(f, fieldnames=FIELDS)
         writer.writeheader()
         for recipe in recipe_list:
+            slug = recipe.get("slug", "")
             row = {
                 "name": recipe.get("name", ""),
-                "slug": recipe.get("slug", ""),
+                "slug": slug,
                 "make_time": recipe.get("make_time", ""),
+                "link": RECIPE_URL_PREFIX + slug if slug else "",
             }
             writer.writerow(row)
 
