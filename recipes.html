@@ -211,6 +211,28 @@
         .recipe-card .card-actions a.btn-icon {
             text-decoration: none;
         }
+        .tabs .cart-badge {
+            display: inline-block;
+            min-width: 1.25em;
+            padding: 0.15em 0.4em;
+            margin-left: 0.35rem;
+            font-size: 0.8em;
+            font-weight: 600;
+            color: #fff;
+            background: #5c4a32;
+            border-radius: 10px;
+            vertical-align: middle;
+        }
+        .cart-empty {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            text-align: center;
+            color: #6b5d4d;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
     </style>
 </head>
 <body>
@@ -221,6 +243,7 @@
     <div class="tabs">
         <button type="button" class="tab-btn active" data-tab="breakfast">Завтраки</button>
         <button type="button" class="tab-btn" data-tab="dinner">Обеды и ужины</button>
+        <button type="button" class="tab-btn" data-tab="cart">Корзина <span id="cart-count" class="cart-badge" style="display: none;">0</span></button>
     </div>
     <div id="tag-filters" class="tag-filters" style="display: none;">
         <span class="label">Теги:</span>
@@ -235,6 +258,10 @@
     <div id="panel-dinner" class="tab-panel">
         <div id="recipes-dinner" class="recipes" style="display: none;"></div>
     </div>
+    <div id="panel-cart" class="tab-panel">
+        <div id="cart-empty" class="cart-empty" style="display: none;">В корзине пока ничего нет. Нажмите «+» на карточке рецепта, чтобы добавить.</div>
+        <div id="recipes-cart" class="recipes" style="display: none;"></div>
+    </div>
 
     <script>
         function escapeHtml(s) {
@@ -244,9 +271,18 @@
             return div.innerHTML;
         }
 
-        function renderRecipeCard(r) {
+        function getRecipeKey(r) {
+            var slug = (r.slug || '').trim();
+            return slug || (r.name || '').trim() || String(r.id || '');
+        }
+
+        function renderRecipeCard(r, options) {
+            options = options || {};
+            var inCart = options.inCart === true;
+
             var card = document.createElement('div');
             card.className = 'recipe-card';
+            card.dataset.recipeKey = getRecipeKey(r);
 
             var img = r.image_thumb || r.image || '';
             var imgEl = img
@@ -269,12 +305,16 @@
             var slug = (r.slug || '').trim();
             var recipeUrl = slug ? 'https://кухня.рф/recipes/' + encodeURIComponent(slug) : '#';
             var plusSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+            var minusSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>';
             var externalSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
             var listSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
 
+            var cartBtnHtml = inCart
+                ? '<button type="button" class="btn-icon btn-remove-cart" title="Удалить из корзины" aria-label="Удалить из корзины">' + minusSvg + '</button>'
+                : '<button type="button" class="btn-icon btn-add-cart" title="Добавить в корзину" aria-label="Добавить в корзину">' + plusSvg + '</button>';
             var actionsHtml =
                 '<div class="card-actions">' +
-                '<button type="button" class="btn-icon" title="Добавить в корзину" aria-label="Добавить в корзину">' + plusSvg + '</button>' +
+                cartBtnHtml +
                 '<a href="' + escapeHtml(recipeUrl) + '" class="btn-icon" target="_blank" rel="noopener noreferrer" title="Открыть рецепт">' + externalSvg + '</a>' +
                 '<button type="button" class="btn-icon" title="Ингредиенты" aria-label="Ингредиенты">' + listSvg + '</button>' +
                 '</div>';
@@ -346,13 +386,73 @@
             });
         }
 
-        function fillRecipes(containerId, list) {
+        var cartRecipes = [];
+
+        function addToCart(r) {
+            var key = getRecipeKey(r);
+            if (cartRecipes.some(function (x) { return getRecipeKey(x) === key; })) return;
+            cartRecipes.push(r);
+            updateCartBadge();
+            refreshCartPanel();
+            var tabId = getCurrentTabId();
+            if (tabId === 'breakfast' || tabId === 'dinner') refreshCurrentRecipes();
+        }
+
+        function removeFromCart(r) {
+            var key = getRecipeKey(r);
+            cartRecipes = cartRecipes.filter(function (x) { return getRecipeKey(x) !== key; });
+            updateCartBadge();
+            refreshCartPanel();
+            var tabId = getCurrentTabId();
+            if (tabId === 'breakfast' || tabId === 'dinner') refreshCurrentRecipes();
+        }
+
+        function updateCartBadge() {
+            var el = document.getElementById('cart-count');
+            var n = cartRecipes.length;
+            el.textContent = n;
+            el.style.display = n > 0 ? 'inline-block' : 'none';
+        }
+
+        function refreshCartPanel() {
+            var panel = document.getElementById('panel-cart');
+            if (!panel || !panel.classList.contains('active')) return;
+            fillRecipes('recipes-cart', cartRecipes, { inCart: true });
+            var emptyEl = document.getElementById('cart-empty');
+            var listEl = document.getElementById('recipes-cart');
+            if (cartRecipes.length === 0) {
+                emptyEl.style.display = 'block';
+                listEl.style.display = 'none';
+            } else {
+                emptyEl.style.display = 'none';
+                listEl.style.display = 'grid';
+            }
+        }
+
+        function isRecipeInCart(r) {
+            var key = getRecipeKey(r);
+            return cartRecipes.some(function (x) { return getRecipeKey(x) === key; });
+        }
+
+        function fillRecipes(containerId, list, options) {
+            options = options || {};
+            var forceInCart = options.inCart === true;
             var container = document.getElementById(containerId);
             container.innerHTML = '';
             (list || []).forEach(function (r) {
-                container.appendChild(renderRecipeCard(r));
+                var inCart = forceInCart || isRecipeInCart(r);
+                var card = renderRecipeCard(r, { inCart: inCart });
+                container.appendChild(card);
+                var addBtn = card.querySelector('.btn-add-cart');
+                var removeBtn = card.querySelector('.btn-remove-cart');
+                if (addBtn) {
+                    addBtn.addEventListener('click', function () { addToCart(r); });
+                }
+                if (removeBtn) {
+                    removeBtn.addEventListener('click', function () { removeFromCart(r); });
+                }
             });
-            container.style.display = 'grid';
+            container.style.display = (list && list.length) ? 'grid' : 'none';
         }
 
         var breakfastList = [];
@@ -421,8 +521,14 @@
             document.querySelectorAll('.tab-panel').forEach(function (panel) {
                 panel.classList.toggle('active', panel.id === 'panel-' + tabId);
             });
-            updateTagFilterButtons(tabId);
-            fillRecipes(tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner', getFilteredList(tabId));
+            if (tabId === 'cart') {
+                document.getElementById('tag-filters').style.display = 'none';
+                refreshCartPanel();
+            } else {
+                document.getElementById('tag-filters').style.display = 'flex';
+                updateTagFilterButtons(tabId);
+                fillRecipes(tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner', getFilteredList(tabId));
+            }
         }
 
         document.getElementById('search-input').addEventListener('input', function () {
