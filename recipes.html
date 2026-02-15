@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Рецепты на завтрак</title>
+    <title>Рецепты</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -17,6 +17,39 @@
             text-align: center;
             margin-bottom: 1.5rem;
             color: #5c4a32;
+        }
+        .tabs {
+            display: flex;
+            gap: 0;
+            max-width: 1200px;
+            margin: 0 auto 1.25rem;
+            border-bottom: 2px solid #e8e0d5;
+        }
+        .tabs button {
+            padding: 0.65rem 1.5rem;
+            font-size: 1rem;
+            font-family: inherit;
+            color: #6b5d4d;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .tabs button:hover {
+            color: #5c4a32;
+        }
+        .tabs button.active {
+            color: #5c4a32;
+            font-weight: 600;
+            border-bottom-color: #5c4a32;
+        }
+        .tab-panel {
+            display: none;
+        }
+        .tab-panel.active {
+            display: block;
         }
         #loading {
             text-align: center;
@@ -93,53 +126,102 @@
     </style>
 </head>
 <body>
-    <h1>Рецепты на завтрак</h1>
+    <h1>Рецепты</h1>
+    <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="breakfast">Завтраки</button>
+        <button type="button" class="tab-btn" data-tab="dinner">Обеды и ужины</button>
+    </div>
     <div id="loading">Загрузка рецептов…</div>
     <div id="error" style="display: none;"></div>
-    <div id="recipes" class="recipes" style="display: none;"></div>
+
+    <div id="panel-breakfast" class="tab-panel active">
+        <div id="recipes-breakfast" class="recipes" style="display: none;"></div>
+    </div>
+    <div id="panel-dinner" class="tab-panel">
+        <div id="recipes-dinner" class="recipes" style="display: none;"></div>
+    </div>
 
     <script>
-        fetch('recipes_for_breakfast.json')
-            .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error('Не удалось загрузить данные')); })
-            .then(function (data) {
+        function escapeHtml(s) {
+            if (!s) return '';
+            var div = document.createElement('div');
+            div.textContent = s;
+            return div.innerHTML;
+        }
+
+        function renderRecipeCard(r) {
+            var card = document.createElement('div');
+            card.className = 'recipe-card';
+
+            var img = r.image_thumb || r.image || '';
+            var imgEl = img
+                ? '<img src="' + img.replace(/"/g, '&quot;') + '" alt="" loading="lazy">'
+                : '';
+
+            var dishName = r.dish && r.dish.name ? r.dish.name : '';
+            var time = r.make_time ? r.make_time + ' мин' : '';
+            var meta = [dishName, time].filter(Boolean).join(' · ');
+
+            var tagsHtml = '';
+            if (r.tag_list && r.tag_list.length) {
+                tagsHtml = '<div class="tags">' +
+                    r.tag_list.slice(0, 6).map(function (t) {
+                        return '<span class="tag">' + escapeHtml(t.name) + '</span>';
+                    }).join('') +
+                    '</div>';
+            }
+
+            card.innerHTML =
+                (imgEl ? '<div class="img-wrap">' + imgEl + '</div>' : '') +
+                '<div class="body">' +
+                '<h2>' + escapeHtml(r.name) + '</h2>' +
+                (meta ? '<div class="meta">' + escapeHtml(meta) + '</div>' : '') +
+                (r.description ? '<p class="description">' + escapeHtml(r.description) + '</p>' : '') +
+                tagsHtml +
+                '</div>';
+
+            return card;
+        }
+
+        function fillRecipes(containerId, list) {
+            var container = document.getElementById(containerId);
+            container.innerHTML = '';
+            list.forEach(function (r) {
+                container.appendChild(renderRecipeCard(r));
+            });
+            container.style.display = 'grid';
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(function (btn) {
+                btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
+            });
+            document.querySelectorAll('.tab-panel').forEach(function (panel) {
+                panel.classList.toggle('active', panel.id === 'panel-' + tabId);
+            });
+        }
+
+        document.querySelectorAll('.tab-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                switchTab(this.getAttribute('data-tab'));
+            });
+        });
+
+        Promise.all([
+            fetch('recipes_for_breakfast.json').then(function (res) {
+                return res.ok ? res.json() : Promise.reject(new Error('Не удалось загрузить рецепты завтрака'));
+            }),
+            fetch('recipes_for_dinner.json').then(function (res) {
+                return res.ok ? res.json() : Promise.reject(new Error('Не удалось загрузить рецепты ужина'));
+            })
+        ])
+            .then(function (results) {
                 document.getElementById('loading').style.display = 'none';
-                var list = data.recipe_list || [];
-                var container = document.getElementById('recipes');
-                container.style.display = 'grid';
-
-                list.forEach(function (r) {
-                    var card = document.createElement('div');
-                    card.className = 'recipe-card';
-
-                    var img = r.image_thumb || r.image || '';
-                    var imgEl = img
-                        ? '<img src="' + img.replace(/"/g, '&quot;') + '" alt="" loading="lazy">'
-                        : '';
-
-                    var dishName = r.dish && r.dish.name ? r.dish.name : '';
-                    var time = r.make_time ? r.make_time + ' мин' : '';
-                    var meta = [dishName, time].filter(Boolean).join(' · ');
-
-                    var tagsHtml = '';
-                    if (r.tag_list && r.tag_list.length) {
-                        tagsHtml = '<div class="tags">' +
-                            r.tag_list.slice(0, 6).map(function (t) {
-                                return '<span class="tag">' + escapeHtml(t.name) + '</span>';
-                            }).join('') +
-                            '</div>';
-                    }
-
-                    card.innerHTML =
-                        (imgEl ? '<div class="img-wrap">' + imgEl + '</div>' : '') +
-                        '<div class="body">' +
-                        '<h2>' + escapeHtml(r.name) + '</h2>' +
-                        (meta ? '<div class="meta">' + escapeHtml(meta) + '</div>' : '') +
-                        (r.description ? '<p class="description">' + escapeHtml(r.description) + '</p>' : '') +
-                        tagsHtml +
-                        '</div>';
-
-                    container.appendChild(card);
-                });
+                var breakfastList = results[0].recipe_list || [];
+                var dinnerList = results[1].recipe_list || [];
+                fillRecipes('recipes-breakfast', breakfastList);
+                fillRecipes('recipes-dinner', dinnerList);
+                document.getElementById('panel-breakfast').classList.add('active');
             })
             .catch(function (err) {
                 document.getElementById('loading').style.display = 'none';
@@ -147,13 +229,6 @@
                 errEl.style.display = 'block';
                 errEl.textContent = err.message || 'Ошибка загрузки';
             });
-
-        function escapeHtml(s) {
-            if (!s) return '';
-            var div = document.createElement('div');
-            div.textContent = s;
-            return div.innerHTML;
-        }
     </script>
 </body>
 </html>
