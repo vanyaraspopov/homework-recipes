@@ -45,6 +45,29 @@
             font-weight: 600;
             border-bottom-color: #5c4a32;
         }
+        .search-wrap {
+            max-width: 1200px;
+            margin: 0 auto 1rem;
+        }
+        .search-wrap input {
+            width: 100%;
+            padding: 0.65rem 1rem;
+            font-size: 1rem;
+            font-family: inherit;
+            color: #2c2416;
+            background: #fff;
+            border: 1px solid #ddd5c8;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .search-wrap input:focus {
+            border-color: #5c4a32;
+            box-shadow: 0 0 0 2px rgba(92, 74, 50, 0.15);
+        }
+        .search-wrap input::placeholder {
+            color: #999;
+        }
         .tag-filters {
             max-width: 1200px;
             margin: 0 auto 1rem;
@@ -159,6 +182,9 @@
 </head>
 <body>
     <h1>Рецепты</h1>
+    <div class="search-wrap">
+        <input type="text" id="search-input" placeholder="Поиск по названию и тегам. Слова через пробел; теги — с # (например: овсянка #завтрак)" autocomplete="off">
+    </div>
     <div class="tabs">
         <button type="button" class="tab-btn active" data-tab="breakfast">Завтраки</button>
         <button type="button" class="tab-btn" data-tab="dinner">Обеды и ужины</button>
@@ -243,6 +269,36 @@
             });
         }
 
+        function parseSearchQuery(text) {
+            var raw = (text || '').trim().split(/\s+/).filter(Boolean);
+            var nameWords = [];
+            var tagWords = [];
+            raw.forEach(function (w) {
+                if (w.charAt(0) === '#') {
+                    var tag = w.slice(1).trim();
+                    if (tag) tagWords.push(tag.toLowerCase());
+                } else {
+                    if (w) nameWords.push(w.toLowerCase());
+                }
+            });
+            return { nameWords: nameWords, tagWords: tagWords };
+        }
+
+        function filterBySearch(recipeList, nameWords, tagWords) {
+            if (nameWords.length === 0 && tagWords.length === 0) return recipeList;
+            return recipeList.filter(function (r) {
+                var name = (r.name || '').toLowerCase();
+                var nameMatch = nameWords.length === 0 || nameWords.every(function (w) {
+                    return name.indexOf(w) !== -1;
+                });
+                var tagNames = (r.tag_list || []).map(function (t) { return (t.name || '').toLowerCase(); });
+                var tagMatch = tagWords.length === 0 || tagWords.every(function (w) {
+                    return tagNames.some(function (t) { return t.indexOf(w) !== -1; });
+                });
+                return nameMatch && tagMatch;
+            });
+        }
+
         function fillRecipes(containerId, list) {
             var container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -255,6 +311,26 @@
         var breakfastList = [];
         var dinnerList = [];
         var selectedTagsByTab = { breakfast: [], dinner: [] };
+        var searchQueryText = '';
+
+        function getCurrentTabId() {
+            var btn = document.querySelector('.tab-btn.active');
+            return btn ? btn.getAttribute('data-tab') : 'breakfast';
+        }
+
+        function getFilteredList(tabId) {
+            var list = tabId === 'breakfast' ? breakfastList : dinnerList;
+            list = filterByTags(list, selectedTagsByTab[tabId] || []);
+            var parsed = parseSearchQuery(searchQueryText);
+            list = filterBySearch(list, parsed.nameWords, parsed.tagWords);
+            return list;
+        }
+
+        function refreshCurrentRecipes() {
+            var tabId = getCurrentTabId();
+            var containerId = tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner';
+            fillRecipes(containerId, getFilteredList(tabId));
+        }
 
         function renderTagFilters(tags, selectedTagIds, onSelect) {
             var wrap = document.getElementById('tag-buttons');
@@ -287,7 +363,7 @@
                 selectedTagsByTab[tabId] = nextTagIds;
                 updateTagFilterButtons(tabId);
                 var containerId = tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner';
-                fillRecipes(containerId, filterByTags(list, nextTagIds));
+                fillRecipes(containerId, getFilteredList(tabId));
             });
         }
 
@@ -299,10 +375,13 @@
                 panel.classList.toggle('active', panel.id === 'panel-' + tabId);
             });
             updateTagFilterButtons(tabId);
-            var list = tabId === 'breakfast' ? breakfastList : dinnerList;
-            var selectedTagIds = selectedTagsByTab[tabId] || [];
-            fillRecipes(tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner', filterByTags(list, selectedTagIds));
+            fillRecipes(tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner', getFilteredList(tabId));
         }
+
+        document.getElementById('search-input').addEventListener('input', function () {
+            searchQueryText = this.value;
+            refreshCurrentRecipes();
+        });
 
         document.querySelectorAll('.tab-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -322,12 +401,12 @@
                 document.getElementById('loading').style.display = 'none';
                 breakfastList = results[0].recipe_list || [];
                 dinnerList = results[1].recipe_list || [];
-                fillRecipes('recipes-breakfast', breakfastList);
-                fillRecipes('recipes-dinner', dinnerList);
                 document.getElementById('tag-filters').style.display = 'flex';
                 selectedTagsByTab = { breakfast: [], dinner: [] };
                 updateTagFilterButtons('breakfast');
                 document.getElementById('panel-breakfast').classList.add('active');
+                fillRecipes('recipes-breakfast', getFilteredList('breakfast'));
+                fillRecipes('recipes-dinner', getFilteredList('dinner'));
             })
             .catch(function (err) {
                 document.getElementById('loading').style.display = 'none';
