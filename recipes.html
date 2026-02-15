@@ -45,6 +45,38 @@
             font-weight: 600;
             border-bottom-color: #5c4a32;
         }
+        .tag-filters {
+            max-width: 1200px;
+            margin: 0 auto 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .tag-filters .label {
+            font-size: 0.9rem;
+            color: #6b5d4d;
+            margin-right: 0.25rem;
+        }
+        .tag-filters button {
+            padding: 0.4rem 0.75rem;
+            font-size: 0.85rem;
+            font-family: inherit;
+            color: #5c4a32;
+            background: #e8e0d5;
+            border: 1px solid #ddd5c8;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .tag-filters button:hover {
+            background: #ddd5c8;
+        }
+        .tag-filters button.active {
+            background: #5c4a32;
+            color: #fff;
+            border-color: #5c4a32;
+        }
         .tab-panel {
             display: none;
         }
@@ -131,6 +163,10 @@
         <button type="button" class="tab-btn active" data-tab="breakfast">Завтраки</button>
         <button type="button" class="tab-btn" data-tab="dinner">Обеды и ужины</button>
     </div>
+    <div id="tag-filters" class="tag-filters" style="display: none;">
+        <span class="label">Теги:</span>
+        <div id="tag-buttons"></div>
+    </div>
     <div id="loading">Загрузка рецептов…</div>
     <div id="error" style="display: none;"></div>
 
@@ -183,13 +219,70 @@
             return card;
         }
 
+        function getUniqueTags(recipeList) {
+            var byId = {};
+            recipeList.forEach(function (r) {
+                if (r.tag_list && r.tag_list.length) {
+                    r.tag_list.forEach(function (t) {
+                        if (t.id && !byId[t.id]) byId[t.id] = { id: t.id, name: t.name };
+                    });
+                }
+            });
+            return Object.keys(byId).map(function (id) { return byId[id]; }).sort(function (a, b) {
+                return (a.name || '').localeCompare(b.name || '');
+            });
+        }
+
+        function filterByTag(recipeList, tagId) {
+            if (!tagId) return recipeList;
+            return recipeList.filter(function (r) {
+                return r.tag_list && r.tag_list.some(function (t) { return t.id === tagId; });
+            });
+        }
+
         function fillRecipes(containerId, list) {
             var container = document.getElementById(containerId);
             container.innerHTML = '';
-            list.forEach(function (r) {
+            (list || []).forEach(function (r) {
                 container.appendChild(renderRecipeCard(r));
             });
             container.style.display = 'grid';
+        }
+
+        var breakfastList = [];
+        var dinnerList = [];
+        var selectedTagByTab = { breakfast: null, dinner: null };
+
+        function renderTagFilters(tags, selectedTagId, onSelect) {
+            var wrap = document.getElementById('tag-buttons');
+            wrap.innerHTML = '';
+            var allBtn = document.createElement('button');
+            allBtn.type = 'button';
+            allBtn.textContent = 'Все';
+            allBtn.classList.toggle('active', !selectedTagId);
+            allBtn.addEventListener('click', function () { onSelect(null); });
+            wrap.appendChild(allBtn);
+            tags.forEach(function (tag) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = tag.name;
+                btn.dataset.tagId = String(tag.id);
+                btn.classList.toggle('active', selectedTagId === tag.id);
+                btn.addEventListener('click', function () { onSelect(tag.id); });
+                wrap.appendChild(btn);
+            });
+        }
+
+        function updateTagFilterButtons(tabId) {
+            var list = tabId === 'breakfast' ? breakfastList : dinnerList;
+            var selectedTagId = selectedTagByTab[tabId];
+            var tags = getUniqueTags(list);
+            renderTagFilters(tags, selectedTagId, function (tagId) {
+                selectedTagByTab[tabId] = tagId || null;
+                updateTagFilterButtons(tabId);
+                var containerId = tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner';
+                fillRecipes(containerId, filterByTag(list, tagId || null));
+            });
         }
 
         function switchTab(tabId) {
@@ -199,6 +292,10 @@
             document.querySelectorAll('.tab-panel').forEach(function (panel) {
                 panel.classList.toggle('active', panel.id === 'panel-' + tabId);
             });
+            updateTagFilterButtons(tabId);
+            var list = tabId === 'breakfast' ? breakfastList : dinnerList;
+            var tagId = selectedTagByTab[tabId];
+            fillRecipes(tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner', filterByTag(list, tagId));
         }
 
         document.querySelectorAll('.tab-btn').forEach(function (btn) {
@@ -217,10 +314,12 @@
         ])
             .then(function (results) {
                 document.getElementById('loading').style.display = 'none';
-                var breakfastList = results[0].recipe_list || [];
-                var dinnerList = results[1].recipe_list || [];
+                breakfastList = results[0].recipe_list || [];
+                dinnerList = results[1].recipe_list || [];
                 fillRecipes('recipes-breakfast', breakfastList);
                 fillRecipes('recipes-dinner', dinnerList);
+                document.getElementById('tag-filters').style.display = 'flex';
+                updateTagFilterButtons('breakfast');
                 document.getElementById('panel-breakfast').classList.add('active');
             })
             .catch(function (err) {
