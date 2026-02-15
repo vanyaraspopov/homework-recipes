@@ -338,6 +338,58 @@
             font-size: 0.9rem;
             color: #6b5d4d;
         }
+        .cart-toolbar {
+            max-width: 1200px;
+            margin: 0 auto 1rem;
+            display: none;
+        }
+        .cart-toolbar.visible {
+            display: block;
+        }
+        .btn-summarize {
+            padding: 0.65rem 1.25rem;
+            font-size: 1rem;
+            font-family: inherit;
+            color: #fff;
+            background: #5c4a32;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-summarize:hover {
+            background: #4a3c28;
+        }
+        .btn-summarize:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .summary-ingredient-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .summary-ingredient-list li {
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #f0ebe3;
+        }
+        .summary-ingredient-list li:last-child {
+            border-bottom: none;
+        }
+        .summary-ingredient-name {
+            font-weight: 500;
+            color: #3d3428;
+        }
+        .summary-ingredient-total {
+            font-size: 0.9rem;
+            color: #6b5d4d;
+            margin-top: 0.25rem;
+        }
+        .summary-ingredient-recipes {
+            font-size: 0.85rem;
+            color: #6b5d4d;
+            margin-top: 0.2rem;
+        }
     </style>
 </head>
 <body>
@@ -365,6 +417,9 @@
     </div>
     <div id="panel-cart" class="tab-panel">
         <div id="cart-empty" class="cart-empty" style="display: none;">В корзине пока ничего нет. Нажмите «+» на карточке рецепта, чтобы добавить.</div>
+        <div id="cart-toolbar" class="cart-toolbar">
+            <button type="button" id="btn-summarize" class="btn-summarize">Сводка ингредиентов</button>
+        </div>
         <div id="recipes-cart" class="recipes" style="display: none;"></div>
     </div>
 
@@ -451,6 +506,83 @@
             var overlay = document.getElementById('ingredients-popup');
             overlay.classList.remove('active');
             overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        function parseIngredientValue(val) {
+            if (val == null) return NaN;
+            if (typeof val === 'number' && !isNaN(val)) return val;
+            var s = String(val).trim().replace(',', '.');
+            return parseFloat(s);
+        }
+
+        function openSummaryPopup() {
+            var recipes = cartRecipes.slice();
+            if (recipes.length === 0) {
+                alert('В корзине нет рецептов.');
+                return;
+            }
+            var overlay = document.getElementById('ingredients-popup');
+            var titleEl = document.getElementById('ingredients-popup-title');
+            var bodyEl = document.getElementById('ingredients-popup-body');
+            titleEl.textContent = 'Сводка ингредиентов';
+            bodyEl.className = 'popup-body loading';
+            bodyEl.innerHTML = 'Загрузка…';
+            overlay.classList.add('active');
+            overlay.setAttribute('aria-hidden', 'false');
+
+            var baseUrl = 'https://api.xn--j1agri5c.xn--p1ai/api/v1/recipe/detail/';
+            var promises = recipes.map(function (r) {
+                var slug = (r.slug || '').trim();
+                var name = (r.name || '').trim() || 'Без названия';
+                if (!slug) return Promise.resolve({ name: name, ingredients: [] });
+                return fetch(baseUrl + encodeURIComponent(slug) + '/')
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        var ingredients = (data && Array.isArray(data.ingredients)) ? data.ingredients : [];
+                        return { name: name, ingredients: ingredients };
+                    })
+                    .catch(function () { return { name: name, ingredients: [] }; });
+            });
+
+            Promise.all(promises).then(function (results) {
+                var agg = {};
+                results.forEach(function (item) {
+                    var recipeName = item.name;
+                    (item.ingredients || []).forEach(function (ing) {
+                        var name = (ing.name || '').trim();
+                        if (!name) return;
+                        var unit = (ing.unit || '').trim();
+                        var key = name + '|' + unit;
+                        if (!agg[key]) agg[key] = { name: name, unit: unit, value: 0, recipes: [] };
+                        var v = parseIngredientValue(ing.value);
+                        if (!isNaN(v)) agg[key].value += v;
+                        if (agg[key].recipes.indexOf(recipeName) === -1) agg[key].recipes.push(recipeName);
+                    });
+                });
+                var entries = Object.keys(agg).map(function (k) { return agg[k]; });
+                bodyEl.className = 'popup-body';
+                if (entries.length === 0) {
+                    bodyEl.innerHTML = '<p>Не удалось загрузить ингредиенты для выбранных рецептов.</p>';
+                    return;
+                }
+                var ul = document.createElement('ul');
+                ul.className = 'summary-ingredient-list';
+                entries.forEach(function (e) {
+                    var amount = e.unit ? e.value + ' ' + e.unit : String(e.value);
+                    var recipesText = e.recipes.length ? e.recipes.join(', ') : '';
+                    var li = document.createElement('li');
+                    li.innerHTML =
+                        '<span class="summary-ingredient-name">' + escapeHtml(e.name) + '</span>' +
+                        '<div class="summary-ingredient-total">' + escapeHtml(amount) + '</div>' +
+                        (recipesText ? '<div class="summary-ingredient-recipes">Для рецептов: ' + escapeHtml(recipesText) + '</div>' : '');
+                    ul.appendChild(li);
+                });
+                bodyEl.innerHTML = '';
+                bodyEl.appendChild(ul);
+            }).catch(function () {
+                bodyEl.className = 'popup-body error';
+                bodyEl.textContent = 'Не удалось загрузить ингредиенты. Проверьте подключение к интернету.';
+            });
         }
 
         function renderRecipeCard(r, options) {
@@ -597,12 +729,15 @@
             fillRecipes('recipes-cart', cartRecipes, { inCart: true });
             var emptyEl = document.getElementById('cart-empty');
             var listEl = document.getElementById('recipes-cart');
+            var toolbarEl = document.getElementById('cart-toolbar');
             if (cartRecipes.length === 0) {
                 emptyEl.style.display = 'block';
                 listEl.style.display = 'none';
+                if (toolbarEl) toolbarEl.classList.remove('visible');
             } else {
                 emptyEl.style.display = 'none';
                 listEl.style.display = 'grid';
+                if (toolbarEl) toolbarEl.classList.add('visible');
             }
         }
 
@@ -711,6 +846,8 @@
             });
             if (tabId === 'cart') {
                 document.getElementById('tag-filters').style.display = 'none';
+                var cartToolbar = document.getElementById('cart-toolbar');
+                if (cartToolbar) cartToolbar.classList.toggle('visible', cartRecipes.length > 0);
                 refreshCartPanel();
             } else {
                 document.getElementById('tag-filters').style.display = 'flex';
@@ -734,6 +871,7 @@
         document.getElementById('ingredients-popup').addEventListener('click', function (e) {
             if (e.target === this) closeIngredientsPopup();
         });
+        document.getElementById('btn-summarize').addEventListener('click', openSummaryPopup);
 
         Promise.all([
             fetch('recipes_for_breakfast.json').then(function (res) {
