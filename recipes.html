@@ -233,10 +233,13 @@
             });
         }
 
-        function filterByTag(recipeList, tagId) {
-            if (!tagId) return recipeList;
+        function filterByTags(recipeList, tagIds) {
+            if (!tagIds || tagIds.length === 0) return recipeList;
             return recipeList.filter(function (r) {
-                return r.tag_list && r.tag_list.some(function (t) { return t.id === tagId; });
+                if (!r.tag_list || r.tag_list.length === 0) return false;
+                return tagIds.every(function (tagId) {
+                    return r.tag_list.some(function (t) { return t.id === tagId; });
+                });
             });
         }
 
@@ -251,37 +254,40 @@
 
         var breakfastList = [];
         var dinnerList = [];
-        var selectedTagByTab = { breakfast: null, dinner: null };
+        var selectedTagsByTab = { breakfast: [], dinner: [] };
 
-        function renderTagFilters(tags, selectedTagId, onSelect) {
+        function renderTagFilters(tags, selectedTagIds, onSelect) {
             var wrap = document.getElementById('tag-buttons');
             wrap.innerHTML = '';
-            var allBtn = document.createElement('button');
-            allBtn.type = 'button';
-            allBtn.textContent = 'Все';
-            allBtn.classList.toggle('active', !selectedTagId);
-            allBtn.addEventListener('click', function () { onSelect(null); });
-            wrap.appendChild(allBtn);
+            var idSet = {};
+            (selectedTagIds || []).forEach(function (id) { idSet[id] = true; });
             tags.forEach(function (tag) {
                 var btn = document.createElement('button');
                 btn.type = 'button';
                 btn.textContent = tag.name;
                 btn.dataset.tagId = String(tag.id);
-                btn.classList.toggle('active', selectedTagId === tag.id);
-                btn.addEventListener('click', function () { onSelect(tag.id); });
+                btn.classList.toggle('active', !!idSet[tag.id]);
+                btn.addEventListener('click', function () {
+                    var idx = (selectedTagIds || []).indexOf(tag.id);
+                    var next = (selectedTagIds || []).slice();
+                    if (idx >= 0) next.splice(idx, 1);
+                    else next.push(tag.id);
+                    next.sort();
+                    onSelect(next);
+                });
                 wrap.appendChild(btn);
             });
         }
 
         function updateTagFilterButtons(tabId) {
             var list = tabId === 'breakfast' ? breakfastList : dinnerList;
-            var selectedTagId = selectedTagByTab[tabId];
+            var selectedTagIds = selectedTagsByTab[tabId] || [];
             var tags = getUniqueTags(list);
-            renderTagFilters(tags, selectedTagId, function (tagId) {
-                selectedTagByTab[tabId] = tagId || null;
+            renderTagFilters(tags, selectedTagIds, function (nextTagIds) {
+                selectedTagsByTab[tabId] = nextTagIds;
                 updateTagFilterButtons(tabId);
                 var containerId = tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner';
-                fillRecipes(containerId, filterByTag(list, tagId || null));
+                fillRecipes(containerId, filterByTags(list, nextTagIds));
             });
         }
 
@@ -294,8 +300,8 @@
             });
             updateTagFilterButtons(tabId);
             var list = tabId === 'breakfast' ? breakfastList : dinnerList;
-            var tagId = selectedTagByTab[tabId];
-            fillRecipes(tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner', filterByTag(list, tagId));
+            var selectedTagIds = selectedTagsByTab[tabId] || [];
+            fillRecipes(tabId === 'breakfast' ? 'recipes-breakfast' : 'recipes-dinner', filterByTags(list, selectedTagIds));
         }
 
         document.querySelectorAll('.tab-btn').forEach(function (btn) {
@@ -319,6 +325,7 @@
                 fillRecipes('recipes-breakfast', breakfastList);
                 fillRecipes('recipes-dinner', dinnerList);
                 document.getElementById('tag-filters').style.display = 'flex';
+                selectedTagsByTab = { breakfast: [], dinner: [] };
                 updateTagFilterButtons('breakfast');
                 document.getElementById('panel-breakfast').classList.add('active');
             })
