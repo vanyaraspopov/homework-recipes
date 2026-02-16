@@ -450,6 +450,46 @@
             return slug || (r.name || '').trim() || String(r.id || '');
         }
 
+        function getRecipeIdForUrl(r) {
+            if (r == null) return '';
+            if (r.id != null && r.id !== '') return String(r.id);
+            return (r.slug || '').trim() || (r.name || '').trim();
+        }
+
+        function getRecipeIdsFromUrl() {
+            var params = new URLSearchParams(window.location.search);
+            var recipesParam = params.get('recipes');
+            if (!recipesParam) return [];
+            return recipesParam.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        }
+
+        function findRecipeById(breakfastList, dinnerList, id) {
+            var idStr = String(id);
+            var i, r;
+            for (i = 0; i < (breakfastList || []).length; i++) {
+                r = breakfastList[i];
+                if (getRecipeIdForUrl(r) === idStr) return r;
+            }
+            for (i = 0; i < (dinnerList || []).length; i++) {
+                r = dinnerList[i];
+                if (getRecipeIdForUrl(r) === idStr) return r;
+            }
+            return null;
+        }
+
+        function updateRecipesUrl() {
+            var ids = cartRecipes.map(function (r) { return getRecipeIdForUrl(r); }).filter(Boolean);
+            var params = new URLSearchParams(window.location.search);
+            if (ids.length === 0) {
+                params.delete('recipes');
+            } else {
+                params.set('recipes', ids.join(','));
+            }
+            var query = params.toString();
+            var newUrl = window.location.pathname + (query ? '?' + query : '') + (window.location.hash || '');
+            window.history.replaceState({}, '', newUrl);
+        }
+
         function openIngredientsPopup(recipeName, slug) {
             var overlay = document.getElementById('ingredients-popup');
             var titleEl = document.getElementById('ingredients-popup-title');
@@ -701,6 +741,7 @@
             var key = getRecipeKey(r);
             if (cartRecipes.some(function (x) { return getRecipeKey(x) === key; })) return;
             cartRecipes.push(r);
+            updateRecipesUrl();
             updateCartBadge();
             refreshCartPanel();
             var tabId = getCurrentTabId();
@@ -710,6 +751,7 @@
         function removeFromCart(r) {
             var key = getRecipeKey(r);
             cartRecipes = cartRecipes.filter(function (x) { return getRecipeKey(x) !== key; });
+            updateRecipesUrl();
             updateCartBadge();
             refreshCartPanel();
             var tabId = getCurrentTabId();
@@ -887,6 +929,11 @@
                 dinnerList = results[1].recipe_list || [];
                 document.getElementById('tag-filters').style.display = 'flex';
                 selectedTagsByTab = { breakfast: [], dinner: [] };
+                var idsFromUrl = getRecipeIdsFromUrl();
+                idsFromUrl.forEach(function (id) {
+                    var recipe = findRecipeById(breakfastList, dinnerList, id);
+                    if (recipe) addToCart(recipe);
+                });
                 updateTagFilterButtons('breakfast');
                 document.getElementById('panel-breakfast').classList.add('active');
                 fillRecipes('recipes-breakfast', getFilteredList('breakfast'));
